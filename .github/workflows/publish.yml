@@ -1,0 +1,48 @@
+name: Publish to npm
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+        working-directory: packages/vinext
+
+      - name: Bump version
+        working-directory: packages/vinext
+        run: |
+          # Get the latest published version from npm, default to 0.0.0 if none
+          LATEST=$(npm view vinext version 2>/dev/null || echo "0.0.0")
+          # Bump patch: 0.0.0 -> 0.0.1, 0.0.1 -> 0.0.2, etc.
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST"
+          NEXT_PATCH=$((PATCH + 1))
+          VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}"
+          npm version "$VERSION" --no-git-tag-version
+          echo "Publishing vinext@${VERSION} (was ${LATEST})"
+
+      - name: Publish
+        working-directory: packages/vinext
+        run: npm publish --access public --provenance
