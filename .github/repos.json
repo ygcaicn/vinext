@@ -1,0 +1,6 @@
+[
+  { "name": "openchat", "url": "https://github.com/vercel/openchat.git" },
+  { "name": "platforms-starter-kit", "url": "https://github.com/vercel/platforms.git" },
+  { "name": "nextgram", "url": "https://github.com/vercel/nextgram.git" },
+  { "name": "next-enterprise", "url": "https://github.com/Blazity/next-enterprise.git" }
+]
