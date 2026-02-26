@@ -135,6 +135,24 @@ function isRemoteUrl(src: string): boolean {
 }
 
 /**
+ * Resolve src, width, height, blurDataURL from Image props (string or StaticImageData).
+ * Shared by the Image component and getImageProps to keep behavior in sync.
+ */
+function resolveImageSource(props: {
+  src: string | StaticImageData;
+  width?: number;
+  height?: number;
+  blurDataURL?: string;
+}): { src: string; width?: number; height?: number; blurDataURL?: string } {
+  const { src: srcProp, width, height, blurDataURL } = props;
+  const src = typeof srcProp === "string" ? srcProp : srcProp.src;
+  const imgWidth = width ?? (typeof srcProp === "object" ? srcProp.width : undefined);
+  const imgHeight = height ?? (typeof srcProp === "object" ? srcProp.height : undefined);
+  const imgBlurDataURL = blurDataURL ?? (typeof srcProp === "object" ? srcProp.blurDataURL : undefined);
+  return { src, width: imgWidth, height: imgHeight, blurDataURL: imgBlurDataURL };
+}
+
+/**
  * Common responsive image widths matching Next.js's default device sizes + image sizes.
  * These are the breakpoints used for srcSet generation.
  */
@@ -186,11 +204,12 @@ const Image = forwardRef<HTMLImageElement, ImageProps>(function Image(
   },
   ref,
 ) {
-  // Handle StaticImageData (import result)
-  const src = typeof srcProp === "string" ? srcProp : srcProp.src;
-  const imgWidth = width ?? (typeof srcProp === "object" ? srcProp.width : undefined);
-  const imgHeight = height ?? (typeof srcProp === "object" ? srcProp.height : undefined);
-  const imgBlurDataURL = blurDataURL ?? (typeof srcProp === "object" ? srcProp.blurDataURL : undefined);
+  const { src, width: imgWidth, height: imgHeight, blurDataURL: imgBlurDataURL } = resolveImageSource({
+    src: srcProp,
+    width,
+    height,
+    blurDataURL,
+  });
 
   // If a custom loader is provided, use basic img with loader URL
   if (loader) {
@@ -278,11 +297,10 @@ const Image = forwardRef<HTMLImageElement, ImageProps>(function Image(
 
   // Build srcSet for responsive local images (common breakpoints).
   // Each entry points to /_vinext/image with the appropriate width.
+  // When unoptimized, omit srcSet — the same raw URL with different w descriptors would be meaningless.
   const srcSet = imgWidth && !fill && !skipOptimization
     ? generateSrcSet(src, imgWidth, imgQuality)
-    : imgWidth && !fill
-      ? RESPONSIVE_WIDTHS.filter((w) => w <= imgWidth * 2).map((w) => `${src} ${w}w`).join(", ") || `${src} ${imgWidth}w`
-      : undefined;
+    : undefined;
 
   // The main `src` also goes through the optimization endpoint. Use the
   // declared width (or the first responsive width as fallback).
@@ -357,10 +375,12 @@ export function getImageProps(props: ImageProps): {
     ...rest
   } = props;
 
-  const src = typeof srcProp === "string" ? srcProp : srcProp.src;
-  const imgWidth = width ?? (typeof srcProp === "object" ? srcProp.width : undefined);
-  const imgHeight = height ?? (typeof srcProp === "object" ? srcProp.height : undefined);
-  const imgBlurDataURL = blurDataURLProp ?? (typeof srcProp === "object" ? srcProp.blurDataURL : undefined);
+  const { src, width: imgWidth, height: imgHeight, blurDataURL: imgBlurDataURL } = resolveImageSource({
+    src: srcProp,
+    width,
+    height,
+    blurDataURL: blurDataURLProp,
+  });
 
   // Validate remote URLs against configured patterns
   let blockedInProd = false;
