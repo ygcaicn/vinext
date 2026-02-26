@@ -50,36 +50,45 @@ export function getSSRHeadHTML(): string {
 const ALLOWED_HEAD_TAGS = new Set([
   "title", "meta", "link", "style", "script", "base", "noscript",
 ]);
+const ALLOWED_HEAD_TAGS_LIST = Array.from(ALLOWED_HEAD_TAGS).join(", ");
+
+/** Self-closing tags: no inner content, emit as <tag ... /> */
+const SELF_CLOSING_HEAD_TAGS = new Set(["meta", "link", "base"]);
 
 /**
- * Convert a React element to an HTML string for SSR head injection.
- * Returns an empty string for disallowed tag types.
+ * Collect allowed, valid head children (tag + props) for reuse in SSR and client.
+ * Ensures both paths use the same allowlist and validation.
+ * In dev, warns once for disallowed tags.
  */
-function reactElementToHTML(child: React.ReactElement): string {
-  const tag = child.type as string;
-
-  if (!ALLOWED_HEAD_TAGS.has(tag)) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn(
-        `[vinext] <Head> ignoring disallowed tag <${tag}>. ` +
-        `Only ${[...ALLOWED_HEAD_TAGS].join(", ")} are allowed.`,
-      );
+function getValidHeadChildren(children: React.ReactNode): Array<{ type: string; props: Record<string, unknown> }> {
+  const out: Array<{ type: string; props: Record<string, unknown> }> = [];
+  Children.forEach(children, (child) => {
+    if (!isValidElement(child) || typeof child.type !== "string") return;
+    if (!ALLOWED_HEAD_TAGS.has(child.type)) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          `[vinext] <Head> ignoring disallowed tag <${child.type}>. Only ${ALLOWED_HEAD_TAGS_LIST} are allowed.`,
+        );
+      }
+      return;
     }
-    return "";
-  }
+    out.push({ type: child.type, props: child.props as Record<string, unknown> });
+  });
+  return out;
+}
 
-  const props = child.props as Record<string, unknown>;
+/**
+ * Convert props + tag to an HTML string for SSR head injection.
+ */
+function headChildToHTML(tag: string, props: Record<string, unknown>): string {
   const attrs: string[] = [];
   let innerHTML = "";
 
   for (const [key, value] of Object.entries(props)) {
     if (key === "children") {
-      if (typeof value === "string") {
-        innerHTML = escapeHTML(value);
-      }
+      if (typeof value === "string") innerHTML = escapeHTML(value);
     } else if (key === "dangerouslySetInnerHTML") {
-      // Intentionally raw — developer explicitly opted in
-      const html = value as { __html: string };
+      const html = value as { __html?: string };
       if (html?.__html) innerHTML = html.__html;
     } else if (key === "className") {
       attrs.push(`class="${escapeAttr(String(value))}"`);
@@ -91,13 +100,9 @@ function reactElementToHTML(child: React.ReactElement): string {
   }
 
   const attrStr = attrs.length ? " " + attrs.join(" ") : "";
-
-  // Self-closing tags
-  const selfClosing = ["meta", "link", "base"];
-  if (selfClosing.includes(tag)) {
+  if (SELF_CLOSING_HEAD_TAGS.has(tag)) {
     return `<${tag}${attrStr} data-vinext-head="true" />`;
   }
-
   return `<${tag}${attrStr} data-vinext-head="true">${innerHTML}</${tag}>`;
 }
 
@@ -112,14 +117,14 @@ export function escapeAttr(s: string): string {
 // --- Component ---
 
 function Head({ children }: HeadProps): null {
-  // SSR path: collect elements for later injection
+  const valid = getValidHeadChildren(children);
+
+  // SSR path: collect HTML for later injection
   if (typeof window === "undefined") {
-    Children.forEach(children, (child) => {
-      if (!isValidElement(child)) return;
-      if (typeof child.type !== "string") return;
-      const html = reactElementToHTML(child);
+    for (const { type, props } of valid) {
+      const html = headChildToHTML(type, props);
       if (html) _getSSRHeadElements().push(html);
-    });
+    }
     return null;
   }
 
@@ -128,39 +133,29 @@ function Head({ children }: HeadProps): null {
   useEffect(() => {
     const elements: Element[] = [];
 
-    // Remove previous vinext-managed head elements
-    document
-      .querySelectorAll("[data-vinext-head]")
-      .forEach((el) => el.remove());
+    document.querySelectorAll("[data-vinext-head]").forEach((el) => el.remove());
 
-    Children.forEach(children, (child) => {
-      if (!isValidElement(child)) return;
-      if (typeof child.type !== "string") return;
-      if (!ALLOWED_HEAD_TAGS.has(child.type)) return;
-
-      const domEl = document.createElement(child.type);
-      const props = child.props as Record<string, unknown>;
-
+    for (const { type, props } of valid) {
+      const domEl = document.createElement(type);
       for (const [key, value] of Object.entries(props)) {
         if (key === "children" && typeof value === "string") {
           domEl.textContent = value;
         } else if (key === "dangerouslySetInnerHTML") {
-          // skip for safety
+          // skip for safety on client
         } else if (key === "className") {
           domEl.setAttribute("class", String(value));
         } else if (key !== "children" && typeof value === "string") {
           domEl.setAttribute(key, value);
+        } else if (typeof value === "boolean" && value) {
+          domEl.setAttribute(key, "");
         }
       }
-
       domEl.setAttribute("data-vinext-head", "true");
       document.head.appendChild(domEl);
       elements.push(domEl);
-    });
+    }
 
-    return () => {
-      elements.forEach((el) => el.remove());
-    };
+    return () => elements.forEach((el) => el.remove());
   }, [children]);
 
   return null;
