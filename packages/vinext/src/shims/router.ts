@@ -10,6 +10,7 @@ import { RouterContext } from "./internal/router-context.js";
 import { isValidModulePath } from "../client/validate-module-path.js";
 import { toSameOriginPath } from "./url-utils.js";
 import { stripBasePath } from "../utils/base-path.js";
+import { addQueryParam } from "../utils/query.js";
 
 /** basePath from next.config.js, injected by the plugin at build time */
 const __basePath: string = process.env.__NEXT_ROUTER_BASEPATH ?? "";
@@ -244,22 +245,22 @@ function extractRouteParamNames(pattern: string): string[] {
 
 function getPathnameAndQuery(): {
   pathname: string;
-  query: Record<string, string>;
+  query: Record<string, string | string[]>;
   asPath: string;
 } {
   if (typeof window === "undefined") {
     const _ssrCtx = _getSSRContext();
     if (_ssrCtx) {
-      const query: Record<string, string> = {};
+      const query: Record<string, string | string[]> = {};
       for (const [key, value] of Object.entries(_ssrCtx.query)) {
-        query[key] = Array.isArray(value) ? value.join(",") : value;
+        query[key] = Array.isArray(value) ? [...value] : value;
       }
       return { pathname: _ssrCtx.pathname, query, asPath: _ssrCtx.asPath };
     }
     return { pathname: "/", query: {}, asPath: "/" };
   }
   const pathname = stripBasePath(window.location.pathname, __basePath);
-  const query: Record<string, string> = {};
+  const routeQuery: Record<string, string | string[]> = {};
   // Include dynamic route params from __NEXT_DATA__ (e.g., { id: "42" } from /posts/[id]).
   // Only include keys that are part of the route pattern (not stale query params).
   const nextData = window.__NEXT_DATA__;
@@ -268,18 +269,20 @@ function getPathnameAndQuery(): {
     for (const key of routeParamNames) {
       const value = nextData.query[key];
       if (typeof value === "string") {
-        query[key] = value;
+        routeQuery[key] = value;
       } else if (Array.isArray(value)) {
-        query[key] = value.join(",");
+        routeQuery[key] = [...value];
       }
     }
   }
   // URL search params always reflect the current URL
+  const searchQuery: Record<string, string | string[]> = {};
   const params = new URLSearchParams(window.location.search);
   for (const [key, value] of params) {
-    query[key] = value;
+    addQueryParam(searchQuery, key, value);
   }
-  const asPath = pathname + window.location.search;
+  const query = { ...searchQuery, ...routeQuery };
+  const asPath = pathname + window.location.search + window.location.hash;
   return { pathname, query, asPath };
 }
 

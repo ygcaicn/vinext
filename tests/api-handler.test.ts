@@ -635,6 +635,25 @@ describe("handleApiRoute", () => {
       expect(capturedQuery.tag).toEqual(["a", "b"]);
     });
 
+    it("treats prototype property names as ordinary query keys", async () => {
+      let capturedQuery: Record<string, string | string[]> = {};
+      const handler = vi.fn((req: any) => {
+        capturedQuery = req.query;
+      });
+      const server = mockServer({ default: handler });
+      const req = mockReq("GET", "/api/users?toString=a&constructor=b&__proto__=c");
+      const res = mockRes();
+
+      await handleApiRoute(server, req, res, "/api/users?toString=a&constructor=b&__proto__=c", [
+        route("/api/users"),
+      ]);
+
+      expect(capturedQuery.toString).toBe("a");
+      expect(capturedQuery.constructor).toBe("b");
+      expect(capturedQuery.__proto__).toBe("c");
+      expect(Object.getPrototypeOf(capturedQuery)).toBe(Object.prototype);
+    });
+
     it("returns empty query for URL with no query string", async () => {
       let capturedQuery: Record<string, string | string[]> = {};
       const handler = vi.fn((req: any) => {
