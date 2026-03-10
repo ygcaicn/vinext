@@ -26,6 +26,7 @@ import {
   findInNodeModules,
   ensureViteConfigCompatibility,
 } from "../packages/vinext/src/utils/project.js";
+import { manifestFileWithBase } from "../packages/vinext/src/utils/manifest-paths.js";
 import { computeLazyChunks } from "../packages/vinext/src/index.js";
 import { mergeHeaders } from "../packages/vinext/src/server/worker-utils.js";
 
@@ -1628,7 +1629,7 @@ describe("Cloudflare closeBundle lazy chunk injection", () => {
    * is at dist/server/index.js. The RSC plugin handles __VINEXT_CLIENT_ENTRY__,
    * but we still need to inject __VINEXT_LAZY_CHUNKS__ and __VINEXT_SSR_MANIFEST__.
    */
-  function simulateCloseBundleAppRouter(buildRoot: string): void {
+  function simulateCloseBundleAppRouter(buildRoot: string, base = "/"): void {
     const distDir = path.resolve(buildRoot, "dist");
     if (!fs.existsSync(distDir)) return;
 
@@ -1640,7 +1641,9 @@ describe("Cloudflare closeBundle lazy chunk injection", () => {
     if (fs.existsSync(buildManifestPath)) {
       try {
         const buildManifest = JSON.parse(fs.readFileSync(buildManifestPath, "utf-8"));
-        const lazy = computeLazyChunks(buildManifest);
+        const lazy = computeLazyChunks(buildManifest).map((file) =>
+          manifestFileWithBase(file, base),
+        );
         if (lazy.length > 0) lazyChunksData = lazy;
       } catch {
         /* ignore */
@@ -1679,7 +1682,7 @@ describe("Cloudflare closeBundle lazy chunk injection", () => {
    * The worker entry is found by scanning dist/ for a directory containing
    * wrangler.json. All three globals are injected.
    */
-  function simulateCloseBundlePagesRouter(buildRoot: string): void {
+  function simulateCloseBundlePagesRouter(buildRoot: string, base = "/"): void {
     const distDir = path.resolve(buildRoot, "dist");
     if (!fs.existsSync(distDir)) return;
 
@@ -1712,11 +1715,13 @@ describe("Cloudflare closeBundle lazy chunk injection", () => {
         const buildManifest = JSON.parse(fs.readFileSync(buildManifestPath, "utf-8"));
         for (const [, value] of Object.entries(buildManifest) as [string, any][]) {
           if (value && value.isEntry && value.file) {
-            clientEntryFile = value.file;
+            clientEntryFile = manifestFileWithBase(value.file, base);
             break;
           }
         }
-        const lazy = computeLazyChunks(buildManifest);
+        const lazy = computeLazyChunks(buildManifest).map((file) =>
+          manifestFileWithBase(file, base),
+        );
         if (lazy.length > 0) lazyChunksData = lazy;
       } catch {
         /* ignore */
@@ -1953,6 +1958,21 @@ describe("Cloudflare closeBundle lazy chunk injection", () => {
     expect(lazyChunks).toContain("assets/mermaid-vendor.js");
     expect(lazyChunks).not.toContain("assets/app-entry.js");
     expect(lazyChunks).not.toContain("assets/framework.js");
+  });
+
+  it("Pages Router: prefixes client entry and lazy chunks with basePath", () => {
+    setupPagesRouterBuildOutput(tmpDir, manifestWithLazyChunks);
+
+    simulateCloseBundlePagesRouter(tmpDir, "/docs/");
+
+    const code = fs.readFileSync(path.join(tmpDir, "dist", "worker", "index.js"), "utf-8");
+    expect(code).toContain('globalThis.__VINEXT_CLIENT_ENTRY__ = "docs/assets/app-entry.js";');
+
+    const match = code.match(/globalThis\.__VINEXT_LAZY_CHUNKS__\s*=\s*(\[.*?\]);/);
+    expect(match).not.toBeNull();
+    const lazyChunks = JSON.parse(match![1]);
+    expect(lazyChunks).toContain("docs/assets/mermaid-chart.js");
+    expect(lazyChunks).toContain("docs/assets/mermaid-vendor.js");
   });
 
   it("Pages Router: finds worker entry via wrangler.json directory scan", () => {
