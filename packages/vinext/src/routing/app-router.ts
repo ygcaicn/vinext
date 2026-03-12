@@ -147,27 +147,20 @@ export async function appRouter(
 
   // Find all page.tsx and route.ts files, excluding @slot directories
   // (slot pages are not standalone routes — they're rendered as props of their parent layout)
+  // and _private folders (Next.js convention for colocated non-route files).
   const routes: AppRoute[] = [];
+
+  const excludeDir = (name: string) => name.startsWith("@") || name.startsWith("_");
 
   // Process page files in a single pass
   // Use function form of exclude for Node < 22.14 compatibility (string arrays require >= 22.14)
-  for await (const file of scanWithExtensions(
-    "**/page",
-    appDir,
-    matcher.extensions,
-    (name: string) => name.startsWith("@"),
-  )) {
+  for await (const file of scanWithExtensions("**/page", appDir, matcher.extensions, excludeDir)) {
     const route = fileToAppRoute(file, appDir, "page", matcher);
     if (route) routes.push(route);
   }
 
   // Process route handler files (API routes) in a single pass
-  for await (const file of scanWithExtensions(
-    "**/route",
-    appDir,
-    matcher.extensions,
-    (name: string) => name.startsWith("@"),
-  )) {
+  for await (const file of scanWithExtensions("**/route", appDir, matcher.extensions, excludeDir)) {
     const route = fileToAppRoute(file, appDir, "route", matcher);
     if (route) routes.push(route);
   }
@@ -773,6 +766,8 @@ function scanForInterceptingPages(
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
+    // Skip private folders (prefixed with _)
+    if (entry.name.startsWith("_")) continue;
 
     // Check if this directory name starts with an interception convention
     const interceptMatch = matchInterceptConvention(entry.name);
@@ -859,6 +854,8 @@ function collectInterceptingPages(
   const entries = fs.readdirSync(currentDir, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
+    // Skip private folders (prefixed with _)
+    if (entry.name.startsWith("_")) continue;
     collectInterceptingPages(
       path.join(currentDir, entry.name),
       interceptRoot,
