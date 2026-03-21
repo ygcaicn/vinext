@@ -231,6 +231,8 @@ export interface ResolvedNextConfig {
   allowedDevOrigins: string[];
   /** Extra allowed origins for server action CSRF validation (from experimental.serverActions.allowedOrigins). */
   serverActionsAllowedOrigins: string[];
+  /** Packages whose barrel imports should be optimized (from experimental.optimizePackageImports). */
+  optimizePackageImports: string[];
   /** Parsed body size limit for server actions in bytes (from experimental.serverActions.bodySizeLimit). Defaults to 1MB. */
   serverActionsBodySizeLimit: number;
   /**
@@ -420,6 +422,7 @@ export async function resolveNextConfig(
       aliases: {},
       allowedDevOrigins: [],
       serverActionsAllowedOrigins: [],
+      optimizePackageImports: [],
       serverActionsBodySizeLimit: 1 * 1024 * 1024,
       serverExternalPackages: [],
       buildId,
@@ -501,6 +504,12 @@ export async function resolveNextConfig(
     serverActionsConfig?.bodySizeLimit as string | number | undefined,
   );
 
+  // Resolve optimizePackageImports from experimental config
+  const rawOptimize = experimental?.optimizePackageImports;
+  const optimizePackageImports = Array.isArray(rawOptimize)
+    ? rawOptimize.filter((x): x is string => typeof x === "string")
+    : [];
+
   // Resolve serverExternalPackages — support the current top-level key and the
   // legacy experimental.serverComponentsExternalPackages name that Next.js still
   // accepts (it moved out of experimental in Next.js 14.2).
@@ -564,6 +573,7 @@ export async function resolveNextConfig(
     aliases,
     allowedDevOrigins,
     serverActionsAllowedOrigins,
+    optimizePackageImports,
     serverActionsBodySizeLimit,
     serverExternalPackages,
     buildId,

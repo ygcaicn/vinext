@@ -53,6 +53,7 @@ import {
 import { hasBasePath } from "./utils/base-path.js";
 import { asyncHooksStubPlugin } from "./plugins/async-hooks-stub.js";
 import { clientReferenceDedupPlugin } from "./plugins/client-reference-dedup.js";
+import { createOptimizeImportsPlugin } from "./plugins/optimize-imports.js";
 import { hasWranglerConfig, formatMissingCloudflarePluginError } from "./deploy.js";
 import tsconfigPaths from "vite-tsconfig-paths";
 import type { Options as VitePluginReactOptions } from "@vitejs/plugin-react";
@@ -3453,6 +3454,15 @@ export default function vinext(options: VinextOptions = {}): PluginOption[] {
         },
       },
     } as Plugin,
+    // Barrel import optimization:
+    // Rewrites `import { Slot } from "radix-ui"` → `import * as Slot from "@radix-ui/react-slot"`
+    // for packages listed in optimizePackageImports or DEFAULT_OPTIMIZE_PACKAGES.
+    // This prevents Vite from eagerly evaluating barrel re-exports that call
+    // React.createContext() in RSC environments where createContext doesn't exist.
+    createOptimizeImportsPlugin(
+      () => nextConfig,
+      () => root,
+    ),
     // "use cache" directive transform:
     // Detects "use cache" at file-level or function-level and wraps the
     // exports/functions with registerCachedFunction() from vinext/cache-runtime.
