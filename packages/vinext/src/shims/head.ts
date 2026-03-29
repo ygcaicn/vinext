@@ -202,13 +202,10 @@ export function isSafeAttrName(name: string): boolean {
 
 /**
  * Convert props + tag to an HTML string for SSR head injection.
+ * Callers must only pass tags that have already been validated against
+ * ALLOWED_HEAD_TAGS (e.g. via reduceHeadChildren / collectHeadElements).
  */
 function headChildToHTML(tag: string, props: Record<string, unknown>): string {
-  if (!ALLOWED_HEAD_TAGS.has(tag)) {
-    warnDisallowedHeadTag(tag);
-    return "";
-  }
-
   const attrs: string[] = [];
   let innerHTML = "";
 
