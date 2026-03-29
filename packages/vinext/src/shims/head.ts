@@ -61,6 +61,9 @@ const META_TYPES = ["name", "httpEquiv", "charSet", "itemProp"] as const;
 /** Self-closing tags: no inner content, emit as <tag ... /> */
 const SELF_CLOSING_HEAD_TAGS = new Set(["meta", "link", "base"]);
 
+/** Tags whose content is raw text — closing-tag sequences must be escaped during SSR. */
+const RAW_CONTENT_TAGS = new Set(["script", "style"]);
+
 function warnDisallowedHeadTag(tag: string): void {
   if (process.env.NODE_ENV !== "production") {
     console.warn(
@@ -238,8 +241,7 @@ function headChildToHTML(tag: string, props: Record<string, unknown>): string {
 
   // For raw-content tags (script, style), escape closing-tag sequences so the
   // HTML parser doesn't prematurely terminate the element.
-  const rawContentTags = ["script", "style"];
-  if (rawContentTags.includes(tag) && innerHTML) {
+  if (RAW_CONTENT_TAGS.has(tag) && innerHTML) {
     innerHTML = escapeInlineContent(innerHTML, tag);
   }
 
